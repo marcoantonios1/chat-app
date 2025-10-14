@@ -37,7 +37,7 @@ func buildCLI() *cli.App {
 						return cli.Exit("provide a message with --message or as argument", 2)
 					}
 				}
-				return client.SendOnce(c.String("server"), msg)
+				return client.SendAndReceive(c.String("server"), msg)
 			},
 		},
 

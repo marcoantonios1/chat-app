@@ -1,13 +1,14 @@
 package client
 
 import (
+	"bufio"
 	"fmt"
-	"time"
+	"os"
 
 	"github.com/gorilla/websocket"
 )
 
-func SendOnce(url, msg string) error {
+func SendAndReceive(url string, initialMsg string) error {
 	dialer := websocket.DefaultDialer
 	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
@@ -15,19 +16,44 @@ func SendOnce(url, msg string) error {
 	}
 	defer conn.Close()
 
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if err := conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
-		return fmt.Errorf("write error: %w", err)
+	// Send initial message if provided
+	if initialMsg != "" {
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(initialMsg)); err != nil {
+			return fmt.Errorf("initial write error: %w", err)
+		}
 	}
 
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	_, reply, err := conn.ReadMessage()
-	if err != nil {
-		return fmt.Errorf("read error: %w", err)
+	// 1️⃣ Read loop
+	go func() {
+		for {
+			_, m, err := conn.ReadMessage()
+			if err != nil {
+				fmt.Println("❌ read error:", err)
+				return
+			}
+			fmt.Println("📨", string(m))
+		}
+	}()
+
+	// 2️⃣ Write loop — read user input from stdin
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("> ") // prompt
+		if !scanner.Scan() {
+			break
+		}
+		text := scanner.Text()
+		if text == "" {
+			continue
+		}
+
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(text)); err != nil {
+			fmt.Println("❌ write error:", err)
+			break
+		}
 	}
 
-	fmt.Println(string(reply))
-	return nil
+	return scanner.Err()
 }
 
 func Listen(url string) error {
