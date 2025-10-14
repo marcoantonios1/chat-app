@@ -29,3 +29,22 @@ func SendOnce(url, msg string) error {
 	fmt.Println(string(reply))
 	return nil
 }
+
+func Listen(url string) error {
+	dialer := websocket.DefaultDialer
+	conn, _, err := dialer.Dial(url, nil)
+	if err != nil {
+		return fmt.Errorf("dial error: %w", err)
+	}
+	defer conn.Close()
+
+	fmt.Println("📡 Connected. Waiting for messages...")
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return fmt.Errorf("read error: %w", err)
+		}
+		fmt.Println("📨 New message:", string(msg))
+	}
+}

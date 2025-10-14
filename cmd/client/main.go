@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/marcoantonios1/chat-app/internal/client"
@@ -38,8 +37,18 @@ func buildCLI() *cli.App {
 						return cli.Exit("provide a message with --message or as argument", 2)
 					}
 				}
-				fmt.Print(c.String("server"), " <- ", msg, "\n")
 				return client.SendOnce(c.String("server"), msg)
+			},
+		},
+
+		{
+			Name:  "recieve",
+			Usage: "recieve message from server",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "server", Value: "ws://localhost:8080/message", Usage: "websocket server URL"},
+			},
+			Action: func(c *cli.Context) error {
+				return client.Listen(c.String("server"))
 			},
 		},
 	}
