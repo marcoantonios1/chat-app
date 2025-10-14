@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"os"
@@ -19,6 +19,6 @@ func buildCLI() *cli.App {
 	app.Version = "0.1.0"
 	app.ArgsUsage = " "
 	app.Flags = []cli.Flag{}
-	app.Commands = []cli.Command{}
+	app.Commands = []*cli.Command{}
 	return app
 }
