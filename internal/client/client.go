@@ -2,35 +2,30 @@ package client
 
 import (
 	"fmt"
-	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // ⚠️ Allow all for now — restrict later
-	},
-}
-
-func HandleChat(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+func SendOnce(url, msg string) error {
+	dialer := websocket.DefaultDialer
+	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
-		http.Error(w, "Failed to upgrade", http.StatusBadRequest)
-		return
+		return fmt.Errorf("dial error: %w", err)
 	}
 	defer conn.Close()
 
-	fmt.Println("New client connected!")
-
-	for {
-		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Println("Client disconnected:", err)
-			return
-		}
-
-		fmt.Println("Message received:", string(msg))
-		conn.WriteMessage(websocket.TextMessage, msg) // echo for now
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
+		return fmt.Errorf("write error: %w", err)
 	}
+
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, reply, err := conn.ReadMessage()
+	if err != nil {
+		return fmt.Errorf("read error: %w", err)
+	}
+
+	fmt.Println(string(reply))
+	return nil
 }

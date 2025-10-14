@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/marcoantonios1/chat-app/internal/client"
 	"github.com/urfave/cli/v2"
 )
 
@@ -19,6 +21,27 @@ func buildCLI() *cli.App {
 	app.Version = "0.1.0"
 	app.ArgsUsage = " "
 	app.Flags = []cli.Flag{}
-	app.Commands = []*cli.Command{}
+	app.Commands = []*cli.Command{
+		{
+			Name:  "send",
+			Usage: "Send message to server",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "server", Value: "ws://localhost:8080/message", Usage: "websocket server URL"},
+				&cli.StringFlag{Name: "message", Aliases: []string{"m"}, Usage: "message to send"},
+			},
+			Action: func(c *cli.Context) error {
+				msg := c.String("message")
+				if msg == "" {
+					if c.NArg() > 0 {
+						msg = c.Args().Get(0)
+					} else {
+						return cli.Exit("provide a message with --message or as argument", 2)
+					}
+				}
+				fmt.Print(c.String("server"), " <- ", msg, "\n")
+				return client.SendOnce(c.String("server"), msg)
+			},
+		},
+	}
 	return app
 }
