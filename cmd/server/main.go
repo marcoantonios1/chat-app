@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/urfave/cli/v2"
 	"github.com/marcoantonios1/chat-app/internal/server"
+	"github.com/urfave/cli/v2"
 )
 
 // main entry point for the temporal server
@@ -42,8 +42,7 @@ func startServer() error {
 	})
 
 	http.HandleFunc("/message", server.HandleMessage)
+	http.HandleFunc("/register", server.HandleRegister)
 
 	return http.ListenAndServe(":8080", nil)
 }
-
-
