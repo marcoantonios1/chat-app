@@ -27,3 +27,35 @@ It aims to demonstrate modern networking concepts including concurrency, gRPC, p
 
 ### run client in another terminal
 	./chat-client
+
+## Docker (no Go required)
+
+### Build images manually
+
+From project root:
+
+
+Build client image (uses `DOCKERFILE` by default in this repo):
+
+```sh
+docker build -t chatapp-client -f DOCKERFILE .
+```
+
+
+Run client container (one-off register):
+
+```sh
+docker run --rm -it chat-client:latest register --server http://host.docker.internal:8080/register --id jack
+```
+
+Send a one-off message from container to server running on the host:
+
+```sh
+docker run --rm -it chat-client:latest send --server ws://host.docker.internal:8080/message --id jack --recipient marco --message "Hi"
+```
+
+Interactive client inside Docker:
+
+```sh
+docker run --rm -it chatapp-client send --server ws://host.docker.internal:8080/message --id alice
+```
