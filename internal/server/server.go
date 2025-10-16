@@ -1,9 +1,9 @@
 package server
 
 import (
-	"log"
+	"encoding/json"
 	"net/http"
-	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -13,43 +13,54 @@ var (
 		// for local/dev only — tighten in production
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	clients   = make(map[*websocket.Conn]bool)
-	clientsMu sync.Mutex
 )
 
 func HandleMessage(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		http.Error(w, "failed to upgrade websocket", http.StatusBadRequest)
+		http.Error(w, "upgrade failed", http.StatusBadRequest)
 		return
 	}
-	// register
-	clientsMu.Lock()
-	clients[conn] = true
-	clientsMu.Unlock()
 
-	defer func() {
-		clientsMu.Lock()
-		delete(clients, conn)
-		clientsMu.Unlock()
-		conn.Close()
-	}()
-
-	for {
-		mt, msg, err := conn.ReadMessage()
-		if err != nil {
-			// client closed or read error
-			return
-		}
-
-		// broadcast to all connected clients
-		clientsMu.Lock()
-		for c := range clients {
-			// ignore write errors for simplicity
-			_ = c.WriteMessage(mt, msg)
-		}
-		clientsMu.Unlock()
-
-		log.Printf("📩 Received message: %s", string(msg))
+	id := r.URL.Query().Get("id") // optional client identifier
+	client := &Client{
+		ID:   id,
+		Conn: conn,
+		Send: make(chan []byte, 256),
 	}
+
+	// register client with hub
+	hub.register <- client
+
+	// writer goroutine: sends messages from client.Send to websocket
+	go func(c *Client) {
+		defer c.Conn.Close()
+		for msg := range c.Send {
+			_ = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+		}
+	}(client)
+
+	// reader: receive messages from this socket and route to hub
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		// try to inspect JSON recipient field to route targeted messages
+		var payload struct {
+			Recipient string `json:"recipient"`
+		}
+		if err := json.Unmarshal(msg, &payload); err == nil && payload.Recipient != "" {
+			hub.targeted <- targetedMessage{to: payload.Recipient, msg: msg}
+		} else {
+			hub.broadcast <- msg
+		}
+	}
+
+	// cleanup on disconnect
+	hub.unregister <- client
 }

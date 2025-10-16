@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"time"
 
 	"github.com/marcoantonios1/chat-app/internal/server"
 	"github.com/urfave/cli/v2"
@@ -35,14 +38,32 @@ func buildCLI() *cli.App {
 }
 
 func startServer() error {
-	fmt.Println("🚀 Starting chat server on :8080...")
+    fmt.Println("🚀 Starting chat server on :8080...")
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
-	})
+	go server.RunHub()
 
-	http.HandleFunc("/message", server.HandleMessage)
-	http.HandleFunc("/register", server.HandleRegister)
+    mux := http.NewServeMux()
+    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
+    mux.HandleFunc("/message", server.HandleMessage)
+    mux.HandleFunc("/register", server.HandleRegister)
 
-	return http.ListenAndServe(":8080", nil)
+    srv := &http.Server{Addr: ":8080", Handler: mux}
+
+    // graceful shutdown
+    idleConnsClosed := make(chan struct{})
+    go func() {
+        sig := make(chan os.Signal, 1)
+        signal.Notify(sig, os.Interrupt)
+        <-sig
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+        _ = srv.Shutdown(ctx)
+        close(idleConnsClosed)
+    }()
+
+    if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+        return err
+    }
+    <-idleConnsClosed
+    return nil
 }
