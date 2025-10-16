@@ -51,11 +51,5 @@ docker run --rm -it chat-client:latest register --server http://host.docker.inte
 Send a one-off message from container to server running on the host:
 
 ```sh
-docker run --rm -it chat-client:latest send --server ws://host.docker.internal:8080/message --id jack --recipient marco --message "Hi"
-```
-
-Interactive client inside Docker:
-
-```sh
-docker run --rm -it chatapp-client send --server ws://host.docker.internal:8080/message --id alice
+docker run --rm -it chat-client:latest send --server ws://host.docker.internal:8080/message --id bob --recipient alice --message "Hi"
 ```
