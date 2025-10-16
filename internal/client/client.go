@@ -6,16 +6,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type messagePayload struct {
+	Type      string `json:"type,omitempty"`
 	ID        string `json:"id"`
 	Recipient string `json:"recipient"`
 	Body      string `json:"body"`
+	MsgID     string `json:"msg_id,omitempty"`
 }
 
 var printMu sync.Mutex
@@ -34,17 +38,27 @@ func printIncoming(msg string) {
 	printMu.Unlock()
 }
 
-func SendAndReceive(url string, initialMsg string, id string, recipient string) error {
+func SendAndReceive(rawURL string, initialMsg string, id string, recipient string) error {
+	var statusMu sync.Mutex
+	statuses := make(map[string]string)
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("dial error: %w", err)
+	}
+	q := u.Query()
+	q.Set("id", id)
+	u.RawQuery = q.Encode()
+
 	dialer := websocket.DefaultDialer
-	conn, _, err := dialer.Dial(url, nil)
+	conn, _, err := dialer.Dial(u.String(), nil)
 	if err != nil {
 		return fmt.Errorf("dial error: %w", err)
 	}
 	defer conn.Close()
 
 	// helper to send a body with embedded build id (hidden from user's view)
-	sendBody := func(body string) error {
-		payload := messagePayload{ID: id, Body: body, Recipient: recipient}
+	sendPayload := func(body, typ, msgID, to string) error {
+		payload := messagePayload{Type: typ, ID: id, Body: body, Recipient: to, MsgID: msgID}
 		b, err := json.Marshal(payload)
 		if err != nil {
 			return fmt.Errorf("marshal error: %w", err)
@@ -55,11 +69,20 @@ func SendAndReceive(url string, initialMsg string, id string, recipient string) 
 		return nil
 	}
 
+	sendBody := func(body, typ, msgID string) error {
+		return sendPayload(body, typ, msgID, recipient)
+	}
+
 	// Send initial message if provided
 	if initialMsg != "" {
-		if err := sendBody(initialMsg); err != nil {
+		msgID := fmt.Sprintf("%d", time.Now().UnixNano())
+		if err := sendBody(initialMsg, "msg", msgID); err != nil {
 			return fmt.Errorf("initial write error: %w", err)
 		}
+		statusMu.Lock()
+		statuses[msgID] = "sent"
+		statusMu.Unlock()
+		fmt.Println("📤 Sent:", initialMsg)
 	}
 
 	// 1️⃣ Read loop
@@ -74,13 +97,12 @@ func SendAndReceive(url string, initialMsg string, id string, recipient string) 
 			var payload messagePayload
 			if err := json.Unmarshal(m, &payload); err != nil {
 				// not JSON — print raw message
-				fmt.Println("📨", string(m))
 				printIncoming(string(m))
 				continue
 			}
 
 			// skip messages that originated from this client
-			if payload.ID == id {
+			if payload.ID == id && payload.Type != "ack" {
 				continue
 			}
 
@@ -88,7 +110,28 @@ func SendAndReceive(url string, initialMsg string, id string, recipient string) 
 			if payload.Recipient != "" && payload.Recipient != id {
 				continue
 			}
-			printIncoming(payload.ID + ": " + payload.Body)
+
+			switch payload.Type {
+			case "ack":
+				// update status of sent message
+				if payload.MsgID != "" {
+					statusMu.Lock()
+					statuses[payload.MsgID] = payload.Body // e.g. "delivered" or "queued"
+					statusMu.Unlock()
+					fmt.Println("📫", payload.Body)
+				} else {
+					fmt.Println("📫", payload.Body)
+				}
+			default:
+				sender := payload.ID
+				printIncoming(sender + ": " + payload.Body)
+
+				if payload.MsgID != "" {
+					_ = sendPayload("read", "ack", payload.MsgID, payload.ID)
+				} else {
+					_ = sendPayload("read", "ack", "", payload.ID)
+				}
+			}
 		}
 	}()
 
@@ -104,10 +147,15 @@ func SendAndReceive(url string, initialMsg string, id string, recipient string) 
 			continue
 		}
 
-		if err := sendBody(text); err != nil {
+		msgID := fmt.Sprintf("%d", time.Now().UnixNano())
+		if err := sendBody(text, "msg", msgID); err != nil {
 			fmt.Println("❌ write error:", err)
 			break
 		}
+		statusMu.Lock()
+		statuses[msgID] = "sent"
+		statusMu.Unlock()
+		fmt.Println("✓ Sent ")
 	}
 
 	return scanner.Err()
