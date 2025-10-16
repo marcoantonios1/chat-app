@@ -32,6 +32,11 @@ func main() {
 }
 
 func buildCLI() *cli.App {
+	host := os.Getenv("CHAT_SERVER_HOST")
+	if host == "" {
+		host = "localhost:8080"
+	}
+
 	app := cli.NewApp()
 	app.Name = "chatapp"
 	app.Usage = "Client for chatapp"
@@ -43,7 +48,7 @@ func buildCLI() *cli.App {
 			Name:  "send",
 			Usage: "Send message to server",
 			Flags: []cli.Flag{
-				&cli.StringFlag{Name: "server", Value: "ws://localhost:8080/message", Usage: "websocket server URL"},
+				&cli.StringFlag{Name: "server", Value: "ws://" + host + "/message", Usage: "websocket server URL"},
 				&cli.StringFlag{Name: "message", Aliases: []string{"m"}, Usage: "message to send"},
 				&cli.StringFlag{Name: "id", Aliases: []string{"i"}, Usage: "Identification"},
 				&cli.StringFlag{Name: "recipient", Aliases: []string{"r"}, Usage: "Recipient ID"},
@@ -75,7 +80,7 @@ func buildCLI() *cli.App {
 			Name:  "register",
 			Usage: "register id with server",
 			Flags: []cli.Flag{
-				&cli.StringFlag{Name: "server", Value: "http://localhost:8080/register", Usage: "http server URL"},
+				&cli.StringFlag{Name: "server", Value: "http://" + host + "/register", Usage: "http server URL"},
 				&cli.StringFlag{Name: "id", Aliases: []string{"i"}, Usage: "Identification"},
 			},
 			Action: func(c *cli.Context) error {
