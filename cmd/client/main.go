@@ -49,27 +49,17 @@ func buildCLI() *cli.App {
 			Usage: "Send message to server",
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "server", Value: "ws://" + host + "/message", Usage: "websocket server URL"},
-				&cli.StringFlag{Name: "message", Aliases: []string{"m"}, Usage: "message to send"},
 				&cli.StringFlag{Name: "id", Aliases: []string{"i"}, Usage: "Identification"},
 				&cli.StringFlag{Name: "recipient", Aliases: []string{"r"}, Usage: "Recipient ID"},
 			},
 			Action: func(c *cli.Context) error {
-				msg := c.String("message")
 				id := c.String("id")
 				recipient := c.String("recipient")
 				if id == "" {
 					printError("send", id, cli.Exit("provide an ID with --id", 2))
 					return cli.Exit("provide an ID with --id", 2)
 				}
-				if msg == "" {
-					if c.NArg() > 0 {
-						msg = c.Args().Get(0)
-					} else {
-						printError("send", id, cli.Exit("provide a message with --message or as argument", 2))
-						return cli.Exit("provide a message with --message or as argument", 2)
-					}
-				}
-				if err := client.SendAndReceive(c.String("server"), msg, id, recipient); err != nil {
+				if err := client.SendAndReceive(c.String("server"), id, recipient); err != nil {
 					printError("send", id, err)
 					return cli.Exit(err.Error(), 1)
 				}
