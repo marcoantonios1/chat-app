@@ -21,11 +21,13 @@ const (
 )
 
 type messagePayload struct {
-	Type      string `json:"type,omitempty"`
-	ID        string `json:"id"`
-	Recipient string `json:"recipient"`
-	Body      string `json:"body"`
-	MsgID     string `json:"msg_id,omitempty"`
+	Type         string `json:"type,omitempty"`
+	ID           string `json:"id"`
+	Recipient    string `json:"recipient"`
+	Body         string `json:"body,omitempty"`
+	MsgID        string `json:"msg_id,omitempty"`
+	PublicKey    string `json:"public_key,omitempty"`
+	EncryptedKey string `json:"encrypted_key,omitempty"`
 }
 
 var (

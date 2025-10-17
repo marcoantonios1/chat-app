@@ -3,6 +3,8 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,11 +19,13 @@ import (
 )
 
 type messagePayload struct {
-	Type      string `json:"type,omitempty"`
-	ID        string `json:"id"`
-	Recipient string `json:"recipient"`
-	Body      string `json:"body"`
-	MsgID     string `json:"msg_id,omitempty"`
+	Type         string `json:"type,omitempty"`
+	ID           string `json:"id"`
+	Recipient    string `json:"recipient"`
+	Body         string `json:"body,omitempty"`
+	MsgID        string `json:"msg_id,omitempty"`
+	PublicKey    string `json:"public_key,omitempty"`
+	EncryptedKey string `json:"encrypted_key,omitempty"`
 }
 
 type sentMsg struct {
@@ -50,8 +54,20 @@ func printPrompt() {
 	printMu.Unlock()
 }
 
-func printIncoming(sender, msg string) {
+func printIncoming(sender, msg, key string) {
 	printMu.Lock()
+	if key != "" {
+		if kb, err := hex.DecodeString(key); err == nil {
+			decrypted, err := Decrypt(kb, msg)
+			if err == nil {
+				msg = decrypted
+			} else {
+				printError(fmt.Sprintf("decrypt error: %v", err))
+			}
+		} else {
+			printError(fmt.Sprintf("key decode error: %v", err))
+		}
+	}
 	fmt.Print("\r")
 	fmt.Printf("%s %s %s\n", color.HiBlackString(time.Now().Format(timeFormat)), incomingColor(sender+":"), msg)
 	printMu.Unlock()
@@ -74,7 +90,7 @@ func printError(msg string) {
 	printPrompt()
 }
 
-func printSent(msg sentMsg) {
+func (msg sentMsg) printSent() {
 	printMu.Lock()
 	icon := statusIcon[msg.Status]
 	if icon == "" {
@@ -111,8 +127,8 @@ func SendAndReceive(rawURL string, initialMsg string, id string, recipient strin
 
 	printSystem(fmt.Sprintf("Connected as %s. Type /quit to exit.", meColor(id)))
 
-	sendPayload := func(body, typ, msgID, to string) error {
-		payload := messagePayload{Type: typ, ID: id, Body: body, Recipient: to, MsgID: msgID}
+	sendPayload := func(body, typ, msgID, to, key string) error {
+		payload := messagePayload{Type: typ, ID: id, Body: body, Recipient: to, MsgID: msgID, EncryptedKey: key}
 		b, err := json.Marshal(payload)
 		if err != nil {
 			return fmt.Errorf("marshal error: %w", err)
@@ -121,19 +137,28 @@ func SendAndReceive(rawURL string, initialMsg string, id string, recipient strin
 	}
 
 	// send a message
-	sendBody := func(body, typ, msgID string) error {
-		return sendPayload(body, typ, msgID, recipient)
+	sendBody := func(body, typ, msgID, key string) error {
+		kb, err := hex.DecodeString(key)
+		if err != nil {
+			return fmt.Errorf("key decode error: %w", err)
+		}
+		ciphertext, err := Encrypt(kb, []byte(body))
+		if err != nil {
+			return err
+		}
+		return sendPayload(ciphertext, typ, msgID, recipient, key)
 	}
 
 	// if initial message
 	if initialMsg != "" {
 		msgID := fmt.Sprintf("%d", time.Now().UnixNano())
+		key := "Hi"
 		t := time.Now()
-		_ = sendBody(initialMsg, "msg", msgID)
+		_ = sendBody(initialMsg, "keyexg", msgID, key)
 		mu.Lock()
 		sentMessages[msgID] = &sentMsg{Text: initialMsg, Timestamp: t, Status: "sent"}
 		mu.Unlock()
-		printSent(*sentMessages[msgID])
+		sentMessages[msgID].printSent()
 	}
 
 	// read loop
@@ -146,7 +171,7 @@ func SendAndReceive(rawURL string, initialMsg string, id string, recipient strin
 			}
 			var payload messagePayload
 			if err := json.Unmarshal(m, &payload); err != nil {
-				printIncoming("Server", string(m))
+				printIncoming("Server", string(m), "")
 				continue
 			}
 			if payload.ID == id && payload.Type != "ack" {
@@ -162,17 +187,17 @@ func SendAndReceive(rawURL string, initialMsg string, id string, recipient strin
 					mu.Lock()
 					if msg, ok := sentMessages[payload.MsgID]; ok {
 						msg.Status = payload.Body
-						printSent(*msg)
+						msg.printSent()
 					}
 					mu.Unlock()
 				}
 			default:
-				printIncoming(payload.ID, payload.Body)
-				_ = sendPayload("delivered", "ack", payload.MsgID, payload.ID)
+				printIncoming(payload.ID, payload.Body, payload.EncryptedKey)
+				_ = sendPayload("delivered", "ack", payload.MsgID, payload.ID, "")
 				// simulate read after receiving
 				go func(mid string, sender string) {
 					time.Sleep(1 * time.Second)
-					_ = sendPayload("read", "ack", mid, sender)
+					_ = sendPayload("read", "ack", mid, sender, "")
 				}(payload.MsgID, payload.ID)
 			}
 		}
@@ -196,15 +221,23 @@ func SendAndReceive(rawURL string, initialMsg string, id string, recipient strin
 
 		msgID := fmt.Sprintf("%d", time.Now().UnixNano())
 		t := time.Now()
-		if err := sendBody(text, "msg", msgID); err != nil {
+		kb := make([]byte, 32)
+		if _, err := rand.Read(kb); err != nil {
+			printError(fmt.Sprintf("key gen error: %v", err))
+			continue
+		}
+		keyHex := hex.EncodeToString(kb)
+		if err := sendBody(text, "msg", msgID, keyHex); err != nil {
 			printError(fmt.Sprintf("write error: %v", err))
 			break
 		}
 
 		mu.Lock()
 		sentMessages[msgID] = &sentMsg{Text: text, Timestamp: t, Status: "sent"}
+		m := *sentMessages[msgID]
 		mu.Unlock()
-		printSent(*sentMessages[msgID])
+
+		m.printSent()
 	}
 
 	return scanner.Err()
