@@ -63,7 +63,7 @@ func printPrompt() {
 	printMu.Unlock()
 }
 
-func printIncoming(sender, msg, key string) {
+func printIncoming(sender, msg, key, id string) {
 	printMu.Lock()
 	defer func() {
 		printMu.Unlock()
@@ -92,7 +92,9 @@ func printIncoming(sender, msg, key string) {
 						printError(fmt.Sprintf("decapsulate error: %v", err))
 					} else {
 						// derive AEAD key from shared secret via HKDF-SHA256
-						h := hkdf.New(sha256.New, shared, nil, nil)
+						salt := makeSalt(sender, id)
+						info := []byte("chat-client-shared-key")
+						h := hkdf.New(sha256.New, shared, salt, info)
 						derived := make([]byte, 32)
 						if _, err := io.ReadFull(h, derived); err != nil {
 							printError(fmt.Sprintf("hkdf error: %v", err))
@@ -209,7 +211,9 @@ func SendAndReceive(rawURL string, id string, recipient string) error {
 				return fmt.Errorf("encapsulate error: %w", err)
 			}
 			// derive symmetric key (32 bytes) from KEM shared secret via HKDF-SHA256
-			h := hkdf.New(sha256.New, shared, nil, nil)
+			salt := makeSalt(id, recipient)
+			info := []byte("chat-client-shared-key")
+			h := hkdf.New(sha256.New, shared, salt, info)
 			newDerived := make([]byte, 32)
 			if _, err := io.ReadFull(h, newDerived); err != nil {
 				return fmt.Errorf("hkdf derive error: %w", err)
@@ -282,7 +286,7 @@ func SendAndReceive(rawURL string, id string, recipient string) error {
 			}
 			var payload messagePayload
 			if err := json.Unmarshal(m, &payload); err != nil {
-				printIncoming("Server", string(m), "")
+				printIncoming("Server", string(m), "", id)
 				continue
 			}
 			if payload.ID == id && payload.Type != "ack" {
@@ -336,7 +340,9 @@ func SendAndReceive(rawURL string, id string, recipient string) error {
 					break
 				}
 
-				h := hkdf.New(sha256.New, shared, nil, nil)
+				salt := makeSalt(id, recipient)
+				info := []byte("chat-client-shared-key")
+				h := hkdf.New(sha256.New, shared, salt, info)
 				derived := make([]byte, 32)
 				if _, err := io.ReadFull(h, derived); err != nil {
 					printError(fmt.Sprintf("hkdf derive error from %s: %v", payload.ID, err))
@@ -347,7 +353,7 @@ func SendAndReceive(rawURL string, id string, recipient string) error {
 				peerKeysMu.Unlock()
 				printSystem(fmt.Sprintf("Established shared key with %s", meColor(payload.ID)))
 			default:
-				printIncoming(payload.ID, payload.Body, payload.EncryptedKey)
+				printIncoming(payload.ID, payload.Body, payload.EncryptedKey, payload.ID)
 				_ = sendPayload("delivered", "ack", payload.MsgID, payload.ID, "", "")
 				// simulate read after receiving
 				go func(mid string, sender string) {

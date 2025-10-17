@@ -53,3 +53,11 @@ func DecapsulateWithPriv(privBytes, ciphertext []byte) ([]byte, error) {
 	}
 	return shared, nil
 }
+
+// helper to create deterministic salt for HKDF
+func makeSalt(a, b string) []byte {
+	if a < b {
+		return []byte("chat-client-salt:" + a + ":" + b)
+	}
+	return []byte("chat-client-salt:" + b + ":" + a)
+}
