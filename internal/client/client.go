@@ -23,13 +23,15 @@ import (
 )
 
 type messagePayload struct {
-	Type         string `json:"type,omitempty"`
-	ID           string `json:"id"`
-	Recipient    string `json:"recipient"`
-	Body         string `json:"body,omitempty"`
-	MsgID        string `json:"msg_id,omitempty"`
-	PublicKey    string `json:"public_key,omitempty"`
-	EncryptedKey string `json:"encrypted_key,omitempty"`
+	Type           string `json:"type,omitempty"`
+	ID             string `json:"id"`
+	Recipient      string `json:"recipient"`
+	Body           string `json:"body,omitempty"`
+	MsgID          string `json:"msg_id,omitempty"`
+	PublicKey      string `json:"public_key,omitempty"`
+	EncryptedKey   string `json:"encrypted_key,omitempty"`
+	IdentityPublic string `json:"identity_public,omitempty"`
+	PublicKeySig   string `json:"public_key_sig,omitempty"`
 }
 
 type sentMsg struct {

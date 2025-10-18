@@ -1,16 +1,27 @@
 package client
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 )
 
+const (
+	identityPubFile  = "identity_ed25519.pub"
+	identityPrivFile = "identity_ed25519.key"
+)
+
 var (
 	keyMu      sync.RWMutex
 	cachedPub  []byte
 	cachedPriv []byte
+
+	identityMu   sync.RWMutex
+	identityPub  []byte
+	identityPriv []byte
 )
 
 // SaveKeyPair saves the public and private key bytes to files and caches them in memory.
@@ -94,4 +105,70 @@ func ClearKeyCache() {
 func getKeyDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "Desktop", ".chatkeys")
+}
+
+// GetIdentityKeyPair returns (pub, priv, error). It loads from cache/disk.
+func GetIdentityKeyPair() ([]byte, []byte, error) {
+	identityMu.RLock()
+	if len(identityPub) > 0 && len(identityPriv) > 0 {
+		pub := append([]byte(nil), identityPub...)
+		priv := append([]byte(nil), identityPriv...)
+		identityMu.RUnlock()
+		return pub, priv, nil
+	}
+	identityMu.RUnlock()
+	return LoadIdentityKeyPair()
+}
+
+// GenerateIdentityKeyPair creates a new ed25519 keypair (pub, priv).
+func GenerateIdentityKeyPair() ([]byte, []byte, error) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate identity key: %w", err)
+	}
+	return pub, priv, nil
+}
+
+// SaveIdentityKeyPair writes identity keys to disk and caches them.
+func SaveIdentityKeyPair(pub, priv []byte) error {
+	dir := getKeyDir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("mkdir key dir: %w", err)
+	}
+	pubPath := filepath.Join(dir, identityPubFile)
+	privPath := filepath.Join(dir, identityPrivFile)
+
+	if err := os.WriteFile(pubPath, pub, 0600); err != nil {
+		return fmt.Errorf("write identity pub: %w", err)
+	}
+	if err := os.WriteFile(privPath, priv, 0600); err != nil {
+		return fmt.Errorf("write identity priv: %w", err)
+	}
+
+	identityMu.Lock()
+	identityPub = append([]byte(nil), pub...)
+	identityPriv = append([]byte(nil), priv...)
+	identityMu.Unlock()
+	return nil
+}
+
+func LoadIdentityKeyPair() ([]byte, []byte, error) {
+	dir := getKeyDir()
+	pubPath := filepath.Join(dir, identityPubFile)
+	privPath := filepath.Join(dir, identityPrivFile)
+
+	pub, err := os.ReadFile(pubPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read identity pub: %w", err)
+	}
+	priv, err := os.ReadFile(privPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read identity priv: %w", err)
+	}
+
+	identityMu.Lock()
+	identityPub = append([]byte(nil), pub...)
+	identityPriv = append([]byte(nil), priv...)
+	identityMu.Unlock()
+	return append([]byte(nil), pub...), append([]byte(nil), priv...), nil
 }
