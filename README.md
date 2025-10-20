@@ -6,7 +6,7 @@ It aims to demonstrate modern networking concepts including concurrency, gRPC, p
 ## ✨ Features (planned & implemented)
 -	🖥️ CLI server and client — no external dependencies, easy to run anywhere.
 -	🔁 Concurrent connections using goroutines and channels.
--	🔐 End-to-end encryption (planned).
+-	🔐 End-to-end encryption.
 -	📡 gRPC streaming for structured messaging (planned).
 -	🌍 Peer-to-peer mode with NAT traversal (planned).
 -	🧰 Clean and scalable architecture.
